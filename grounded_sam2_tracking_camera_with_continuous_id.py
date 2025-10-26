@@ -463,11 +463,13 @@ import os
 import cv2
 import torch
 from utils.common_utils import CommonUtils
+from datetime import datetime
 
 
 def main():
     # Parameter settings
-    output_dir = "./outputs"
+    time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = os.path.join("./outputs", time_str)
     prompt_text = "hand."
     detection_interval = 20
     max_frames = 300  # Maximum number of frames to process (prevents infinite loop)
@@ -483,7 +485,7 @@ def main():
         prompt_text=prompt_text,
         detection_interval=detection_interval,
     )
-    tracker.set_prompt("person.")
+    tracker.set_prompt("ball.")
 
     # Open the camera (or replace with local video file, e.g., cv2.VideoCapture("video.mp4"))
     cap = cv2.VideoCapture(0)
