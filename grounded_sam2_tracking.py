@@ -32,9 +32,9 @@ class ObjectThrowTracker:
         min_depth=0.3,
         record_video=True,
         video_fps=60,
-        video_resolution=(1280, 720),
-        sam2_config="configs/sam2.1/sam2.1_hiera_s.yaml",
-        sam2_checkpoint="checkpoints/sam2.1_hiera_small.pt",
+        video_resolution=(640, 360),
+        sam2_config="configs/sam2.1/sam2.1_hiera_t.yaml",
+        sam2_checkpoint="checkpoints/sam2.1_hiera_tiny.pt",
         track_rotation=False
     ):
         self.zed = sl.Camera()
@@ -190,7 +190,9 @@ class ObjectThrowTracker:
                 self.frame_count += 1
                 print('Frame:', self.frame_count, 'Camera fps:', self.zed.get_current_fps())
                 
-                obj, annotated_image = self.detect_thrown_object(frame_rgb, current_depth)
+                time1 = time.perf_counter()
+                obj, annotated_image = self.detect_thrown_object(frame_rgb, current_depth, timing=True)
+                print(f"detect_thrown_object used: {(time.perf_counter() - time1) * 1000:.3f} ms")
                 if obj:
                     bbox = obj["bbox"]
                     cx, cy = obj["centroid"].astype(int)
@@ -221,12 +223,9 @@ class ObjectThrowTracker:
             cv2.putText(frame_bgr, f"Status: {status}", (10, frame_bgr.shape[0] - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-            total_time = (time.perf_counter() - frame_start) * 1000
-            self.processing_times.append(total_time)
-            fps = 1000.0 / np.mean(self.processing_times) if self.processing_times else 0
-            cv2.putText(frame_bgr, f"FPS: {fps:.1f}", (frame_bgr.shape[1] - 150, 30),
+            cv2.putText(frame_bgr, f"FPS: {self.zed.get_current_fps():.1f}", (frame_bgr.shape[1] - 150, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-            self.fps_history.append(fps)
+            self.fps_history.append(self.zed.get_current_fps())
 
             if self.record_video and self.video_writer is not None:
                 resized = cv2.resize(frame_bgr, self.video_resolution)
@@ -236,10 +235,23 @@ class ObjectThrowTracker:
 
         return False, None
     
-    def detect_thrown_object(self, frame, current_depth=None):
-        """Track object using Grounded SAM2 predictor."""
+    def detect_thrown_object(self, frame, current_depth=None, timing=False):
+        """Track object using Grounded SAM2 predictor.
+        
+        Args:
+            frame: Input frame to process
+            current_depth: Depth map corresponding to the frame
+            timing: If True, print timing information for each step
+        """
+        if timing:
+            t_sam = time.perf_counter()
+            
         annotated_image = self.tracker.add_image(frame)
-        # Save annotated image for debugging/record
+        
+        if timing:
+            t_sam_end = time.perf_counter()
+            print(f"SAM2 prediction took: {(t_sam_end - t_sam) * 1000:.1f} ms")
+            
         if annotated_image is not None and isinstance(annotated_image, np.ndarray):
             out_dir =  os.path.join("./outputs", self.datetime_str, "result")
             os.makedirs(out_dir, exist_ok=True)
@@ -257,8 +269,6 @@ class ObjectThrowTracker:
 
             depth = None
             if current_depth is not None:
-                depth_save_dir = os.path.join('outputs', self.datetime_str, 'depth')
-                os.makedirs(depth_save_dir, exist_ok=True)
                 cx = int(np.clip(centroid[0], 0, current_depth.shape[1] - 1))
                 cy = int(np.clip(centroid[1], 0, current_depth.shape[0] - 1))
                 depth_value = float(current_depth[cy, cx])
@@ -321,7 +331,10 @@ class ObjectThrowTracker:
         while True:
             if self.record_video and self.throw_started and not self.recording_started:
                 self.start_recording()
+            time1 = time.perf_counter()
             tracked, frame = self.track_frame()
+            time2 = time.perf_counter()
+            print(f"frame processing time: {(time2 - time1) * 1000:.3f} ms")
             if frame is not None:
                 if self.recording_started:
                     cv2.circle(frame, (30, 30), 10, (0, 0, 255), -1)
@@ -424,13 +437,13 @@ class ObjectThrowTracker:
                     if i < len(self.positions_history) and i < len(self.velocities_history):
                         pos = self.positions_history[i]
                         vel = self.velocities_history[i]
-                        fps = self.fps_history[i] if i < len(self.fps_history) else -1
+                        # fps = self.fps_history[i] if i < len(self.fps_history) else -1
                         timestamp = self.timestamps_history[i]
                         frame = self.frame_numbers_history[i] if i < len(self.frame_numbers_history) else 0
                         row = [
                             frame, timestamp,
                             pos[0], pos[1], pos[2],
-                            vel[0], vel[1], vel[2], fps
+                            vel[0], vel[1], vel[2], self.zed.get_current_fps()
                         ]
                         writer.writerow(row)
                 
@@ -615,13 +628,12 @@ class ObjectThrowTracker:
 
 if __name__ == "__main__":
     tracker = ObjectThrowTracker(
-        prompt_text="purple toy ball.",
+        prompt_text="banana.",
         # max_object_size=0.3,  # Adjusted for larger objects
+        detection_interval=10,
         max_history=300,
         record_video=True,
         video_resolution=(1280, 720),
-        sam2_config="configs/sam2.1/sam2.1_hiera_s.yaml",
-        sam2_checkpoint="./checkpoints/sam2.1_hiera_small.pt",
         track_rotation=False
     )
     tracker.run()

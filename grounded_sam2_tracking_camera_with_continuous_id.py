@@ -14,6 +14,8 @@ from utils.mask_dictionary_model import MaskDictionaryModel, ObjectInfo
 from utils.track_utils import sample_points_from_masks
 from utils.video_utils import create_video_from_images
 
+import time
+
 # Setup environment
 torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
 if torch.cuda.get_device_properties(0).major >= 8:
@@ -188,13 +190,12 @@ class IncrementalObjectTracker:
         Returns:
             np.ndarray: Annotated image with object masks and labels.
         """
-        import numpy as np
-        from PIL import Image
 
         img_pil = Image.fromarray(image_np)
 
         # Step 1: Perform detection every detection_interval frames
         if self.total_frames % self.detection_interval == 0:
+            print(f"[Detection] Performing full detection at frame {self.total_frames}.")
             if (
                 self.inference_state["video_height"] is None
                 or self.inference_state["video_width"] is None
@@ -206,7 +207,11 @@ class IncrementalObjectTracker:
 
             if self.inference_state["images"].shape[0] > self.frame_cache_limit:
                 print(
-                    f"[Reset] Resetting inference state after {self.frame_cache_limit} frames to free memory."
+                    f"[Reset Debug] Frame cache exceeded:"
+                    f"\n  - Cache size: {self.inference_state['images'].shape[0]}"
+                    f"\n  - Cache limit: {self.frame_cache_limit}"
+                    f"\n  - Total frames: {self.total_frames}"
+                    f"\n  - Frame mod interval: {self.total_frames % self.detection_interval}"
                 )
                 self.inference_state = self.video_predictor.init_state()
                 self.inference_state["images"] = torch.empty(
@@ -262,9 +267,11 @@ class IncrementalObjectTracker:
 
         else:
             # Step 2: Use incremental tracking for intermediate frames
+            time1 = time.perf_counter()
             frame_idx = self.video_predictor.add_new_frame(
                 self.inference_state, image_np
             )
+            print('Time to add new frame:', (time.perf_counter() - time1) * 1000, 'ms')
 
         # Step 3: Tracking propagation using the video predictor
         frame_idx, obj_ids, video_res_masks = self.video_predictor.infer_single_frame(
@@ -305,7 +312,11 @@ class IncrementalObjectTracker:
             json_metadata=self.last_mask_dict.to_dict(),
         )
 
-        print(f"[Tracker] Total processed frames: {self.total_frames}")
+        if self.total_frames <= 30:  # Only print for first 30 frames to avoid spam
+            print(f"[Tracker] Total processed frames: {self.total_frames}")
+            print(f"[Tracker Debug] Images in state: {self.inference_state['images'].shape[0]}")
+        elif self.total_frames == 31:
+            print("[Tracker] Suppressing further frame count messages...")
         self.total_frames += 1
         torch.cuda.empty_cache()
         return annotated_frame
@@ -470,9 +481,9 @@ def main():
     # Parameter settings
     time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = os.path.join("./outputs", time_str)
-    prompt_text = "hand."
+    prompt_text = "banana."
     detection_interval = 20
-    max_frames = 300  # Maximum number of frames to process (prevents infinite loop)
+    max_frames = 150  # Maximum number of frames to process (prevents infinite loop)
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -485,7 +496,7 @@ def main():
         prompt_text=prompt_text,
         detection_interval=detection_interval,
     )
-    tracker.set_prompt("ball.")
+    tracker.set_prompt(prompt_text)
 
     # Open the camera (or replace with local video file, e.g., cv2.VideoCapture("video.mp4"))
     cap = cv2.VideoCapture(0)
@@ -497,7 +508,7 @@ def main():
     frame_idx = 0
 
     try:
-        while True:
+        for _ in range(max_frames):
             ret, frame = cap.read()
             if not ret:
                 print("[Warning] Failed to capture frame.")
@@ -523,9 +534,9 @@ def main():
             tracker.save_current_state(output_dir=output_dir, raw_image=frame_rgb)
             frame_idx += 1
 
-            if frame_idx >= max_frames:
-                print(f"[Info] Reached max_frames {max_frames}. Stopping.")
-                break
+            # if frame_idx >= max_frames:
+            #     print(f"[Info] Reached max_frames {max_frames}. Stopping.")
+            #     break
     except KeyboardInterrupt:
         print("[Info] Interrupted by user (Ctrl+C).")
     finally:
