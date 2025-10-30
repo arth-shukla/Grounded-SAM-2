@@ -288,15 +288,12 @@ class IncrementalObjectTracker:
             print(f"[Detection] Incremental tracking at frame {self.total_frames} used {(time.perf_counter() - time1) * 1000} ms.")
 
         # Step 3: Tracking propagation using the video predictor
-        # time3 = time.perf_counter()
         frame_idx, obj_ids, video_res_masks = self.video_predictor.infer_single_frame(
             inference_state=self.inference_state,
             frame_idx=frame_idx,
         )
-        # print(f"Step 3 took {(time.perf_counter() - time3) * 1000} ms.")
 
         # Step 4: Update the mask dictionary based on tracked masks
-        # time4 = time.perf_counter()
         frame_masks = MaskDictionaryModel()
         for i, obj_id in enumerate(obj_ids):
             out_mask = video_res_masks[i] > 0.0
@@ -313,26 +310,21 @@ class IncrementalObjectTracker:
             frame_masks.mask_width = out_mask.shape[-1]
 
         self.last_mask_dict = copy.deepcopy(frame_masks)
-        # print(f"Step 4 took {(time.perf_counter() - time4) * 1000} ms.")
 
         # Step 5: Build mask array
-        # time5 = time.perf_counter()
         H, W = image_np.shape[:2]
         mask_img = torch.zeros((H, W), dtype=torch.int32)
         for obj_id, obj_info in self.last_mask_dict.labels.items():
             mask_img[obj_info.mask == True] = obj_id
 
         mask_array = mask_img.cpu().numpy()
-        # print(f"Step 5 took {(time.perf_counter() - time5) * 1000} ms.")
 
         # Step 6: Visualization
-        # time6 = time.perf_counter()
         annotated_frame = self.visualize_frame_with_mask_and_metadata(
             image_np=image_np,
             mask_array=mask_array,
             json_metadata=self.last_mask_dict.to_dict(),
         )
-        # print(f"Step 6 took {(time.perf_counter() - time6) * 1000} ms.")
 
         self.total_frames += 1
         torch.cuda.empty_cache()
