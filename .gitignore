@@ -145,3 +145,5 @@ dmypy.json
 outputs/
 
 .idea/
+
+throw_recordings/
