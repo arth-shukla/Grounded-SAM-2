@@ -149,7 +149,7 @@ class TrackingDataLogger:
         
         # 4. Y vs. X Position
         ax4 = fig.add_subplot(subplot_layout[0], subplot_layout[1], 4)
-        ax4.plot(positions[:, 1], positions[:, 0], 'b-', linewidth=2)
+        ax4.plot(positions[:, 0], positions[:, 1], 'b-', linewidth=2)
         ax4.scatter(positions[0, 1], positions[0, 0], c='green', s=100, marker='o', label='Start')
         ax4.scatter(positions[-1, 1], positions[-1, 0], c='red', s=100, marker='X', label='End')
         ax4.set_xlabel('X Position (m)')
