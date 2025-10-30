@@ -182,7 +182,7 @@ class IncrementalObjectTracker:
         self.last_mask_dict = MaskDictionaryModel()
         self.track_dict = MaskDictionaryModel()
 
-    def add_image(self, image_np: np.ndarray):
+    def add_image(self, image_np: np.ndarray, full_detection=True):
         """
         Add a new image frame to the tracker and perform detection or tracking update.
         Args:
@@ -194,8 +194,11 @@ class IncrementalObjectTracker:
         img_pil = Image.fromarray(image_np)
 
         # Step 1: Perform detection every detection_interval frames
-        if self.total_frames % self.detection_interval == 0:
+        print(f"[Frame {self.total_frames}] Processing frame...")
+        # if self.total_frames % self.detection_interval == 0:
+        if full_detection:
             print(f"[Detection] Performing full detection at frame {self.total_frames}.")
+            time_init = time.perf_counter()
             if (
                 self.inference_state["video_height"] is None
                 or self.inference_state["video_width"] is None
@@ -221,17 +224,23 @@ class IncrementalObjectTracker:
                     self.inference_state["video_height"],
                     self.inference_state["video_width"],
                 ) = image_np.shape[:2]
+            print(f"[Timing] Initialization took {(time.perf_counter() - time_init) * 1000:.2f} ms")
 
             # 1.1 GroundingDINO object detection
+            time_detection = time.perf_counter()
             boxes, labels = self.grounding_predictor.predict(img_pil, self.prompt_text)
             if boxes.shape[0] == 0:
                 return
+            print(f"[Timing] Object detection took {(time.perf_counter() - time_detection) * 1000:.2f} ms")
 
             # 1.2 SAM2 segmentation from detection boxes
+            time_segmentation = time.perf_counter()
             self.sam2_segmentor.set_image(image_np)
             masks, scores, logits = self.sam2_segmentor.predict_masks_from_boxes(boxes)
+            print(f"[Timing] SAM2 segmentation took {(time.perf_counter() - time_segmentation) * 1000:.2f} ms")
 
             # 1.3 Build MaskDictionaryModel
+            time_mask_dict = time.perf_counter()
             mask_dict = MaskDictionaryModel(
                 promote_type="mask", mask_name=f"mask_{self.total_frames:05d}.npy"
             )
@@ -240,15 +249,19 @@ class IncrementalObjectTracker:
                 box_list=torch.tensor(boxes),
                 label_list=labels,
             )
+            print(f"[Timing] Building mask dictionary took {(time.perf_counter() - time_mask_dict) * 1000:.2f} ms")
 
             # 1.4 Object ID tracking and IOU-based update
+            time_tracking = time.perf_counter()
             self.objects_count = mask_dict.update_masks(
                 tracking_annotation_dict=self.last_mask_dict,
                 iou_threshold=0.3,
                 objects_count=self.objects_count,
             )
+            print(f"[Timing] Object tracking update took {(time.perf_counter() - time_tracking) * 1000:.2f} ms")
 
             # 1.5 Reset video tracker state
+            time_reset = time.perf_counter()
             frame_idx = self.video_predictor.add_new_frame(
                 self.inference_state, image_np
             )
@@ -261,6 +274,7 @@ class IncrementalObjectTracker:
                     object_id,
                     object_info.mask,
                 )
+            print(f"[Timing] Video tracker reset took {(time.perf_counter() - time_reset) * 1000:.2f} ms")
 
             self.track_dict = copy.deepcopy(mask_dict)
             self.last_mask_dict = mask_dict
@@ -271,15 +285,18 @@ class IncrementalObjectTracker:
             frame_idx = self.video_predictor.add_new_frame(
                 self.inference_state, image_np
             )
-            print('Time to add new frame:', (time.perf_counter() - time1) * 1000, 'ms')
+            print(f"[Detection] Incremental tracking at frame {self.total_frames} used {(time.perf_counter() - time1) * 1000} ms.")
 
         # Step 3: Tracking propagation using the video predictor
+        # time3 = time.perf_counter()
         frame_idx, obj_ids, video_res_masks = self.video_predictor.infer_single_frame(
             inference_state=self.inference_state,
             frame_idx=frame_idx,
         )
+        # print(f"Step 3 took {(time.perf_counter() - time3) * 1000} ms.")
 
         # Step 4: Update the mask dictionary based on tracked masks
+        # time4 = time.perf_counter()
         frame_masks = MaskDictionaryModel()
         for i, obj_id in enumerate(obj_ids):
             out_mask = video_res_masks[i] > 0.0
@@ -296,27 +313,27 @@ class IncrementalObjectTracker:
             frame_masks.mask_width = out_mask.shape[-1]
 
         self.last_mask_dict = copy.deepcopy(frame_masks)
+        # print(f"Step 4 took {(time.perf_counter() - time4) * 1000} ms.")
 
         # Step 5: Build mask array
+        # time5 = time.perf_counter()
         H, W = image_np.shape[:2]
         mask_img = torch.zeros((H, W), dtype=torch.int32)
         for obj_id, obj_info in self.last_mask_dict.labels.items():
             mask_img[obj_info.mask == True] = obj_id
 
         mask_array = mask_img.cpu().numpy()
+        # print(f"Step 5 took {(time.perf_counter() - time5) * 1000} ms.")
 
         # Step 6: Visualization
+        # time6 = time.perf_counter()
         annotated_frame = self.visualize_frame_with_mask_and_metadata(
             image_np=image_np,
             mask_array=mask_array,
             json_metadata=self.last_mask_dict.to_dict(),
         )
+        # print(f"Step 6 took {(time.perf_counter() - time6) * 1000} ms.")
 
-        if self.total_frames <= 30:  # Only print for first 30 frames to avoid spam
-            print(f"[Tracker] Total processed frames: {self.total_frames}")
-            print(f"[Tracker Debug] Images in state: {self.inference_state['images'].shape[0]}")
-        elif self.total_frames == 31:
-            print("[Tracker] Suppressing further frame count messages...")
         self.total_frames += 1
         torch.cuda.empty_cache()
         return annotated_frame
