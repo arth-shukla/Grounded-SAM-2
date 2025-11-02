@@ -237,6 +237,10 @@ class IncrementalObjectTracker:
             time_segmentation = time.perf_counter()
             self.sam2_segmentor.set_image(image_np)
             masks, scores, logits = self.sam2_segmentor.predict_masks_from_boxes(boxes)
+            masks = [mask for mask, score in zip(masks, scores) if score > 0.8] 
+            if len(masks) == 0:
+                return
+            print('max score:', scores.max().item())
             print(f"[Timing] SAM2 segmentation took {(time.perf_counter() - time_segmentation) * 1000:.2f} ms")
 
             # 1.3 Build MaskDictionaryModel
