@@ -146,38 +146,24 @@ class TrackingDataLogger:
         ax3.set_title('Velocity Components vs Time', fontsize=12, fontweight='bold')
         ax3.legend()
         ax3.grid(True, alpha=0.3)
-        
-        # 4. Y vs. X Position
-        ax4 = fig.add_subplot(subplot_layout[0], subplot_layout[1], 4)
-        ax4.plot(positions[:, 0], positions[:, 1], 'b-', linewidth=2)
-        ax4.scatter(positions[0, 1], positions[0, 0], c='green', s=100, marker='o', label='Start')
-        ax4.scatter(positions[-1, 1], positions[-1, 0], c='red', s=100, marker='X', label='End')
-        ax4.set_xlabel('X Position (m)')
-        ax4.set_ylabel('Y Position (m)')
-        ax4.set_title('Y vs X Position', fontsize=12, fontweight='bold')
-        ax4.grid(True, alpha=0.3)
-        ax4.set_aspect('equal')
-        ax4.set_xlim(-3.0, 3.0)
-        ax4.set_ylim(-3.0, 3.0)
-        ax4.legend()
 
-        # 5. Speed vs Time
-        ax5 = fig.add_subplot(subplot_layout[0], subplot_layout[1], 5)
-        ax5.plot(timestamps, speeds, 'purple', linewidth=2)
-        ax5.fill_between(timestamps, speeds, alpha=0.3, color='purple')
-        ax5.set_xlabel('Time (s)')
-        ax5.set_ylabel('Speed (m/s)')
-        ax5.set_title('Speed vs Time', fontsize=12, fontweight='bold')
-        ax5.grid(True, alpha=0.3)
+        # 4. Speed vs Time
+        ax4 = fig.add_subplot(subplot_layout[0], subplot_layout[1], 4)
+        ax4.plot(timestamps, speeds, 'purple', linewidth=2)
+        ax4.fill_between(timestamps, speeds, alpha=0.3, color='purple')
+        ax4.set_xlabel('Time (s)')
+        ax4.set_ylabel('Speed (m/s)')
+        ax4.set_title('Speed vs Time', fontsize=12, fontweight='bold')
+        ax4.grid(True, alpha=0.3)
         
         # Add statistics
         max_speed = np.max(speeds)
         avg_speed = np.mean(speeds)
-        ax5.axhline(y=avg_speed, color='orange', linestyle='--', 
+        ax4.axhline(y=avg_speed, color='orange', linestyle='--', 
                    label=f'Avg: {avg_speed:.2f} m/s')
-        ax5.axhline(y=max_speed, color='red', linestyle='--', 
+        ax4.axhline(y=max_speed, color='red', linestyle='--', 
                    label=f'Max: {max_speed:.2f} m/s')
-        ax5.legend()
+        ax4.legend()
         
         # Calculate statistics
         total_distance = np.sum(np.linalg.norm(np.diff(positions, axis=0), axis=1))
@@ -226,6 +212,13 @@ class TrackingDataLogger:
         # Append FPS stats to stats_text
         stats_text += f"\n\n{fps_stats_text}\n"
 
+        # Add stats text to the plot in the remaining subplot space
+        ax5 = fig.add_subplot(subplot_layout[0], subplot_layout[1], 5)
+        ax5.axis('off')
+        ax5.text(0, 1, stats_text, fontsize=10, fontfamily='monospace', 
+                verticalalignment='top', horizontalalignment='left',
+                transform=ax5.transAxes)
+
         plt.tight_layout()
         
         if save_plots:
@@ -251,15 +244,17 @@ class TrackingDataLogger:
         os.makedirs(out_dir, exist_ok=True)
         
         for idx, image in enumerate(object_tracker.image_buffer):
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)  # Convert from RGB to BGR for OpenCV
             frame_count = object_tracker.image_frame_count[idx] if idx < len(object_tracker.image_frame_count) else idx
             filename = os.path.join(out_dir, f"annotated_frame{frame_count}.png")
             cv2.imwrite(filename, image)
-    def read_tracking_data(filepath: str) -> TrackingData:
+    def read_tracking_data(filepath: str, start_frame=None, end_frame=None) -> TrackingData:
         """Read tracking data from a CSV file.
         
         Args:
             filepath: Path to the tracking data CSV file
-            
+            start_frame: Optional start frame for filtering
+            end_frame: Optional end frame for filtering
         Returns:
             TrackingData object containing the parsed data
             
@@ -292,6 +287,11 @@ class TrackingDataLogger:
                     raise ValueError(f"Missing required columns: {missing}")
                 
                 for row in reader:
+                    # Apply frame range filtering if specified
+                    frame_num = int(float(row['frame_number']))
+                    if (start_frame is not None and frame_num < start_frame) or \
+                       (end_frame is not None and frame_num > end_frame):
+                        continue
                     # Parse each row
                     frame_numbers.append(int(float(row['frame_number'])))
                     timestamps.append(float(row['timestamp']))
@@ -386,38 +386,24 @@ class TrackingDataLogger:
         ax3.set_title('Velocity Components vs Time', fontsize=12, fontweight='bold')
         ax3.legend()
         ax3.grid(True, alpha=0.3)
-        
-        # 4. Y vs X Position
-        ax4 = fig.add_subplot(2, 3, 4)
-        ax4.plot(data.positions[:, 1], data.positions[:, 0], 'b-', linewidth=2)
-        ax4.scatter(data.positions[0, 1], data.positions[0, 0], c='green', s=100, marker='o', label='Start')
-        ax4.scatter(data.positions[-1, 1], data.positions[-1, 0], c='red', s=100, marker='X', label='End')
-        ax4.set_xlabel('X Position (m)')
-        ax4.set_ylabel('Y Position (m)')
-        ax4.set_title('Y vs X Position', fontsize=12, fontweight='bold')
-        ax4.grid(True, alpha=0.3)
-        ax4.set_aspect('equal')
-        ax4.set_xlim(-3.0, 3.0)
-        ax4.set_ylim(-3.0, 3.0)
-        ax4.legend()
 
-        # 5. Speed vs Time
-        ax5 = fig.add_subplot(2, 3, 5)
-        ax5.plot(data.timestamps, speeds, 'purple', linewidth=2)
-        ax5.fill_between(data.timestamps, speeds, alpha=0.3, color='purple')
-        ax5.set_xlabel('Time (s)')
-        ax5.set_ylabel('Speed (m/s)')
-        ax5.set_title('Speed vs Time', fontsize=12, fontweight='bold')
-        ax5.grid(True, alpha=0.3)
+        # 4. Speed vs Time
+        ax4 = fig.add_subplot(2, 3, 4)
+        ax4.plot(data.timestamps, speeds, 'purple', linewidth=2)
+        ax4.fill_between(data.timestamps, speeds, alpha=0.3, color='purple')
+        ax4.set_xlabel('Time (s)')
+        ax4.set_ylabel('Speed (m/s)')
+        ax4.set_title('Speed vs Time', fontsize=12, fontweight='bold')
+        ax4.grid(True, alpha=0.3)
         
         # Add statistics
         max_speed = np.max(speeds)
         avg_speed = np.mean(speeds)
-        ax5.axhline(y=avg_speed, color='orange', linestyle='--', 
+        ax4.axhline(y=avg_speed, color='orange', linestyle='--', 
                    label=f'Avg: {avg_speed:.2f} m/s')
-        ax5.axhline(y=max_speed, color='red', linestyle='--', 
+        ax4.axhline(y=max_speed, color='red', linestyle='--', 
                    label=f'Max: {max_speed:.2f} m/s')
-        ax5.legend()
+        ax4.legend()
 
         # Print statistics
         stats_text = f"""
@@ -447,10 +433,16 @@ class TrackingDataLogger:
         Min FPS: {np.min(data.fps):.1f}
         Max FPS: {np.max(data.fps):.1f}
         """
-        print(stats_text)
+
+    # Add stats text to the plot in the remaining subplot space
+        ax5 = fig.add_subplot(2, 3, 5)
+        ax5.axis('off')
+        ax5.text(0, 1, stats_text, fontsize=10, fontfamily='monospace', 
+                verticalalignment='top', horizontalalignment='left',
+                transform=ax5.transAxes)
 
         plt.tight_layout()
-        
+
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"✓ Plots saved to {save_path}")
@@ -461,13 +453,15 @@ class TrackingDataLogger:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot tracking data from CSV file")
     parser.add_argument("filepath", type=str, help="Path to the tracking data CSV file")
+    parser.add_argument("--range", type=str, help="Range of frames to plot (e.g., 0,100)", default=None)
     parser.add_argument("--save", type=str, help="Path to save the plot (optional)", default=None)
     args = parser.parse_args()
 
     try:
         # Read the data
-        data = TrackingDataLogger.read_tracking_data(args.filepath)
-        
+        start_frame, end_frame = map(int, args.range.split(",")) if args.range else (None, None)
+        data = TrackingDataLogger.read_tracking_data(args.filepath, start_frame, end_frame)
+    
         # Create plots and print statistics
         TrackingDataLogger.analyze_and_plot_data(data, args.save)
         
