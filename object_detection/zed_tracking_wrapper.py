@@ -14,7 +14,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 import pyzed.sl as sl
 
-from object_detection.object_throw_tracker_array import ObjectThrowTracker
+from object_detection.realtime_tracking_kalman import ObjectThrowTracker
 
 
 def open_zed(fps=30):

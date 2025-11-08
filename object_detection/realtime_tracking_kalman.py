@@ -12,9 +12,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from grounded_sam2_tracking_camera_with_continuous_id import IncrementalObjectTracker
+from .grounded_sam2_tracking_camera_with_continuous_id import IncrementalObjectTracker
 from utils.kalman_filter import EKF
-from tracking_data_logger import TrackingDataLogger
+from .tracking_data_logger import TrackingDataLogger
 
 IMAGE_SHAPE = (720, 1280)  # (h, w)
 
@@ -359,6 +359,12 @@ class ObjectThrowTracker:
             self.video_writer.release()
             self.video_writer = None
             self.recording_started = False
+
+    def get_curr_pose(self):
+        """Get the current estimated position and velocity."""
+        if not self.positions_history or not self.velocities_history:
+            return None, None
+        return self.positions_history[-1], self.velocities_history[-1]
 
     def finalize(self, save_plots=False):
         """Finalize tracking: stop recording, save tracking data, plots and annotated images.
