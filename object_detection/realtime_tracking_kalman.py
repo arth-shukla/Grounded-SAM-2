@@ -364,7 +364,7 @@ class ObjectThrowTracker:
         """Get the current estimated position and velocity."""
         if not self.positions_history or not self.velocities_history:
             return None, None
-        return self.positions_history[-1], self.velocities_history[-1]
+        return np.concatenate((self.positions_history[-1], self.velocities_history[-1]))
 
     def finalize(self, save_plots=False):
         """Finalize tracking: stop recording, save tracking data, plots and annotated images.
