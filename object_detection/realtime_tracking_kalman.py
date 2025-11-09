@@ -325,7 +325,7 @@ class ObjectThrowTracker:
             displacement = np.linalg.norm(position_3d - self.last_position)
             time_diff = current_time - self.last_detected_time
             speed = displacement / (time_diff + 1e-6)
-            if speed > 15.0:
+            if speed > 10.0:
                 continue
             if displacement < least_displacement:
                 least_displacement = displacement
